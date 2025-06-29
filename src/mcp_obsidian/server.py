@@ -5,7 +5,7 @@ from functools import lru_cache
 from typing import Any
 import os
 from dotenv import load_dotenv
-from mcp.server import Server
+from mcp.server.fastmcp import FastMCP
 from mcp.types import (
     Tool,
     TextContent,
@@ -27,7 +27,7 @@ api_key = os.getenv("OBSIDIAN_API_KEY")
 if not api_key:
     raise ValueError(f"OBSIDIAN_API_KEY environment variable required. Working directory: {os.getcwd()}")
 
-app = Server("mcp-obsidian")
+app = FastMCP("mcp-obsidian")
 
 tool_handlers = {}
 def add_tool_handler(tool_class: tools.ToolHandler):
@@ -55,39 +55,60 @@ add_tool_handler(tools.PeriodicNotesToolHandler())
 add_tool_handler(tools.RecentPeriodicNotesToolHandler())
 add_tool_handler(tools.RecentChangesToolHandler())
 
-@app.list_tools()
-async def list_tools() -> list[Tool]:
-    """List available tools."""
-
-    return [th.get_tool_description() for th in tool_handlers.values()]
-
-@app.call_tool()
-async def call_tool(name: str, arguments: Any) -> Sequence[TextContent | ImageContent | EmbeddedResource]:
-    """Handle tool calls for command line run."""
+# Register all tools dynamically using the same factorized approach
+for tool_handler in tool_handlers.values():
+    tool_desc = tool_handler.get_tool_description()
     
-    if not isinstance(arguments, dict):
-        raise RuntimeError("arguments must be dictionary")
+    def create_tool_function(handler, desc):
+        @app.tool(name=desc.name, description=desc.description)
+        def generic_tool(**arguments) -> Sequence[TextContent | ImageContent | EmbeddedResource]:
+            try:
+                logger.info(f"Tool {handler.name} called with arguments: {arguments}")
+                
+                # Handle the case where arguments are wrapped in an 'arguments' key
+                if 'arguments' in arguments and len(arguments) == 1:
+                    # Extract the actual arguments from the wrapper
+                    actual_args = arguments['arguments']
+                    if isinstance(actual_args, str):
+                        # For simple string arguments, map to expected parameter names
+                        if handler.name == "obsidian_simple_search":
+                            actual_args = {"query": actual_args}
+                        elif handler.name == "obsidian_list_files_in_dir":
+                            actual_args = {"dirpath": actual_args}
+                        elif handler.name == "obsidian_get_file_contents":
+                            actual_args = {"filepath": actual_args}
+                        else:
+                            actual_args = {"arguments": actual_args}
+                    elif isinstance(actual_args, dict):
+                        pass  # Already a dict, use as-is
+                    else:
+                        actual_args = arguments
+                else:
+                    actual_args = arguments
+                
+                return handler.run_tool(actual_args)
+            except Exception as e:
+                logger.error(f"Error in tool {handler.name}: {str(e)}")
+                raise RuntimeError(f"Caught Exception. Error: {str(e)}")
+        return generic_tool
+    
+    # Register the tool
+    create_tool_function(tool_handler, tool_desc)
 
 
-    tool_handler = get_tool_handler(name)
-    if not tool_handler:
-        raise ValueError(f"Unknown tool: {name}")
+def main():
+    import sys
+    import asyncio
+    
+    # Check for stdio mode flag
+    if "--stdio" in sys.argv:
+        # Run in stdio mode (for traditional MCP clients)
+        asyncio.run(app.run_stdio_async())
+    else:
+        # Default to HTTP mode (for MCP inspector and web clients)
+        import uvicorn
+        streamable_app = app.streamable_http_app()
+        uvicorn.run(streamable_app, host="127.0.0.1", port=9091)
 
-    try:
-        return tool_handler.run_tool(arguments)
-    except Exception as e:
-        logger.error(str(e))
-        raise RuntimeError(f"Caught Exception. Error: {str(e)}")
-
-
-async def main():
-
-    # Import here to avoid issues with event loops
-    from mcp.server.stdio import stdio_server
-
-    async with stdio_server() as (read_stream, write_stream):
-        await app.run(
-            read_stream,
-            write_stream,
-            app.create_initialization_options()
-        )
+if __name__ == "__main__":
+    main()

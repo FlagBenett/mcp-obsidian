@@ -65,6 +65,18 @@ Note:
 - Default port is 27124 if not specified
 - Default host is 127.0.0.1 if not specified
 
+## Transport Modes
+
+The MCP server supports two transport modes:
+
+1. **HTTP Mode (Default)**: Runs on port 9091 with streamable HTTP transport
+   - Compatible with MCP Inspector for debugging
+   - Use: `uv run mcp-obsidian`
+
+2. **Stdio Mode**: Runs with stdio transport for traditional MCP clients
+   - Compatible with Claude Desktop and other stdio-based MCP clients
+   - Use: `uv run mcp-obsidian --stdio`
+
 ## Quickstart
 
 ### Install
@@ -93,7 +105,8 @@ On Windows: `%APPDATA%/Claude/claude_desktop_config.json`
         "--directory",
         "<dir_to>/mcp-obsidian",
         "run",
-        "mcp-obsidian"
+        "mcp-obsidian",
+        "--stdio"
       ],
       "env": {
         "OBSIDIAN_API_KEY": "<your_api_key_here>",
@@ -115,7 +128,8 @@ On Windows: `%APPDATA%/Claude/claude_desktop_config.json`
     "mcp-obsidian": {
       "command": "uvx",
       "args": [
-        "mcp-obsidian"
+        "mcp-obsidian",
+        "--stdio"
       ],
       "env": {
         "OBSIDIAN_API_KEY": "<YOUR_OBSIDIAN_API_KEY>",
@@ -141,16 +155,28 @@ uv sync
 
 ### Debugging
 
-Since MCP servers run over stdio, debugging can be challenging. For the best debugging
-experience, we strongly recommend using the [MCP Inspector](https://github.com/modelcontextprotocol/inspector).
+The server supports multiple debugging approaches:
 
-You can launch the MCP Inspector via [`npm`](https://docs.npmjs.com/downloading-and-installing-node-js-and-npm) with this command:
+#### MCP Inspector (HTTP Mode)
 
+For the best debugging experience, use the [MCP Inspector](https://github.com/modelcontextprotocol/inspector) with HTTP mode:
+
+1. Start the server in HTTP mode:
 ```bash
-npx @modelcontextprotocol/inspector uv --directory /path/to/mcp-obsidian run mcp-obsidian
+uv run mcp-obsidian
 ```
 
-Upon launching, the Inspector will display a URL that you can access in your browser to begin debugging.
+2. Open the MCP Inspector in your browser and connect to:
+   - **Transport type**: streamable-http
+   - **URL**: `http://127.0.0.1:9091/mcp`
+
+#### Traditional Debugging (Stdio Mode)
+
+You can also use the traditional stdio-based debugging:
+
+```bash
+npx @modelcontextprotocol/inspector uv --directory /path/to/mcp-obsidian run mcp-obsidian --stdio
+```
 
 You can also watch the server logs with this command:
 

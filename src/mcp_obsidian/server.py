@@ -96,10 +96,19 @@ for tool_handler in tool_handlers.values():
     create_tool_function(tool_handler, tool_desc)
 
 
-def main():
-    import uvicorn
-    streamable_app = app.streamable_http_app()
-    uvicorn.run(streamable_app, host="127.0.0.1", port=9091)
+async def main():
+    import sys
+    
+    # Check for stdio mode flag
+    if "--stdio" in sys.argv:
+        # Run in stdio mode (for traditional MCP clients)
+        await app.run_stdio_async()
+    else:
+        # Default to HTTP mode (for MCP inspector and web clients)
+        import uvicorn
+        streamable_app = app.streamable_http_app()
+        uvicorn.run(streamable_app, host="127.0.0.1", port=9091)
 
 if __name__ == "__main__":
-    main()
+    import asyncio
+    asyncio.run(main())

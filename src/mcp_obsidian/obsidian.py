@@ -29,7 +29,8 @@ class Obsidian():
     
     def _get_headers(self) -> dict:
         headers = {
-            'Authorization': f'Bearer {self.api_key}'
+            'Authorization': f'Bearer {self.api_key}',
+            'X-Session-ID': self.api_key  # Some configurations expect session ID
         }
         return headers
 

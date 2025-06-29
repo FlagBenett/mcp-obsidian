@@ -5,7 +5,7 @@ from functools import lru_cache
 from typing import Any
 import os
 from dotenv import load_dotenv
-from mcp.server import Server
+from mcp.server.fastmcp import FastMCP
 from mcp.types import (
     Tool,
     TextContent,
@@ -27,7 +27,7 @@ api_key = os.getenv("OBSIDIAN_API_KEY")
 if not api_key:
     raise ValueError(f"OBSIDIAN_API_KEY environment variable required. Working directory: {os.getcwd()}")
 
-app = Server("mcp-obsidian")
+app = FastMCP("mcp-obsidian")
 
 tool_handlers = {}
 def add_tool_handler(tool_class: tools.ToolHandler):
@@ -55,39 +55,93 @@ add_tool_handler(tools.PeriodicNotesToolHandler())
 add_tool_handler(tools.RecentPeriodicNotesToolHandler())
 add_tool_handler(tools.RecentChangesToolHandler())
 
-@app.list_tools()
-async def list_tools() -> list[Tool]:
-    """List available tools."""
+# Register each tool individually with proper function signatures
+def register_search_tool():
+    @app.tool(name="obsidian_simple_search", description="Search for text in the vault.")
+    def search_tool(arguments: str, context_length: int = 100) -> list[TextContent]:
+        # Handle both direct string and nested arguments format
+        if isinstance(arguments, str):
+            query = arguments
+        else:
+            query = arguments.get("query", arguments) if isinstance(arguments, dict) else str(arguments)
+        
+        handler = get_tool_handler("obsidian_simple_search")
+        result = handler.run_tool({"query": query, "context_length": context_length})
+        return result
 
-    return [th.get_tool_description() for th in tool_handlers.values()]
+def register_list_vault_tool():
+    @app.tool(name="obsidian_list_files_in_vault", description="Lists all files and directories in the root directory of your Obsidian vault.")
+    def list_vault_tool() -> list[TextContent]:
+        handler = get_tool_handler("obsidian_list_files_in_vault")
+        result = handler.run_tool({})
+        return result
 
-@app.call_tool()
-async def call_tool(name: str, arguments: Any) -> Sequence[TextContent | ImageContent | EmbeddedResource]:
-    """Handle tool calls for command line run."""
-    
-    if not isinstance(arguments, dict):
-        raise RuntimeError("arguments must be dictionary")
+def register_list_dir_tool():
+    @app.tool(name="obsidian_list_files_in_dir", description="Lists all files and directories that exist in a specific Obsidian directory.")
+    def list_dir_tool(dirpath: str) -> list[TextContent]:
+        handler = get_tool_handler("obsidian_list_files_in_dir")
+        result = handler.run_tool({"dirpath": dirpath})
+        return result
+
+def register_get_file_tool():
+    @app.tool(name="obsidian_get_file_contents", description="Read the content of a file in your Obsidian vault.")
+    def get_file_tool(filepath: str) -> list[TextContent]:
+        handler = get_tool_handler("obsidian_get_file_contents")
+        result = handler.run_tool({"filepath": filepath})
+        return result
+
+# Register additional tools
+def register_recent_changes_tool():
+    @app.tool(name="obsidian_get_recent_changes", description="Get recently changed files in the vault.")
+    def recent_changes_tool(num_files: int = 10) -> list[TextContent]:
+        handler = get_tool_handler("obsidian_get_recent_changes")
+        result = handler.run_tool({"num_files": num_files})
+        return result
+
+def register_append_content_tool():
+    @app.tool(name="obsidian_append_content", description="Append content to a file.")
+    def append_content_tool(filepath: str, content: str) -> list[TextContent]:
+        handler = get_tool_handler("obsidian_append_content")
+        result = handler.run_tool({"filepath": filepath, "content": content})
+        return result
+
+def register_put_content_tool():
+    @app.tool(name="obsidian_put_content", description="Write content to a file.")
+    def put_content_tool(filepath: str, content: str) -> list[TextContent]:
+        handler = get_tool_handler("obsidian_put_content")
+        result = handler.run_tool({"filepath": filepath, "content": content})
+        return result
+
+def register_delete_file_tool():
+    @app.tool(name="obsidian_delete_file", description="Delete a file from the vault.")
+    def delete_file_tool(filepath: str) -> list[TextContent]:
+        handler = get_tool_handler("obsidian_delete_file")
+        result = handler.run_tool({"filepath": filepath})
+        return result
+
+def register_complex_search_tool():
+    @app.tool(name="obsidian_complex_search", description="Perform a complex search in the vault.")
+    def complex_search_tool(query: str) -> list[TextContent]:
+        handler = get_tool_handler("obsidian_complex_search")
+        result = handler.run_tool({"query": query})
+        return result
+
+# Register all tools
+register_search_tool()
+register_list_vault_tool()
+register_list_dir_tool()
+register_get_file_tool()
+register_recent_changes_tool()
+register_append_content_tool()
+register_put_content_tool()
+register_delete_file_tool()
+register_complex_search_tool()
 
 
-    tool_handler = get_tool_handler(name)
-    if not tool_handler:
-        raise ValueError(f"Unknown tool: {name}")
+def main():
+    import uvicorn
+    streamable_app = app.streamable_http_app()
+    uvicorn.run(streamable_app, host="127.0.0.1", port=9091)
 
-    try:
-        return tool_handler.run_tool(arguments)
-    except Exception as e:
-        logger.error(str(e))
-        raise RuntimeError(f"Caught Exception. Error: {str(e)}")
-
-
-async def main():
-
-    # Import here to avoid issues with event loops
-    from mcp.server.stdio import stdio_server
-
-    async with stdio_server() as (read_stream, write_stream):
-        await app.run(
-            read_stream,
-            write_stream,
-            app.create_initialization_options()
-        )
+if __name__ == "__main__":
+    main()
